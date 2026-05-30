@@ -14,6 +14,12 @@ const Graph = (() => {
   const nodeMap = new Map();   // title -> node {id,title,primaryCategory,expanded,...}
   const linkSet = new Set();   // "a|b" dedupe key
   let links = [];
+  const adj = new Map();       // title -> Set of neighbour titles (d3-independent)
+
+  // Focus-path navigation: only the breadcrumb path (root → … → focus) plus the
+  // focused node's own links are shown. `focusOpen` toggles the focused node's children.
+  let path = [];               // ordered titles, root → … → focus
+  let focusOpen = true;
 
   function init(clickHandler) {
     onNodeClick = clickHandler || onNodeClick;
@@ -64,6 +70,9 @@ const Graph = (() => {
     nodeMap.clear();
     linkSet.clear();
     links = [];
+    adj.clear();
+    path = [];
+    focusOpen = true;
     Categories.reset();
     if (nodeLayer) nodeLayer.selectAll('*').remove();
     if (linkLayer) linkLayer.selectAll('*').remove();
@@ -102,6 +111,41 @@ const Graph = (() => {
     if (!nodeMap.has(sourceTitle) || !nodeMap.has(targetTitle)) return;
     linkSet.add(key);
     links.push({ source: sourceTitle, target: targetTitle });
+    if (!adj.has(sourceTitle)) adj.set(sourceTitle, new Set());
+    if (!adj.has(targetTitle)) adj.set(targetTitle, new Set());
+    adj.get(sourceTitle).add(targetTitle);
+    adj.get(targetTitle).add(sourceTitle);
+  }
+
+  /* ── focus-path navigation ── */
+  function focusTitle() { return path.length ? path[path.length - 1] : null; }
+
+  // A node is visible when it is on the breadcrumb path, or it is a child of the
+  // focused node while that node is open. Before any selection (path empty) we
+  // show everything — covers the transient expand-before-select on a fresh start.
+  function isVisibleNode(title) {
+    if (!path.length) return true;
+    if (path.includes(title)) return true;
+    const f = focusTitle();
+    if (focusOpen && f && adj.has(f) && adj.get(f).has(title)) return true;
+    return false;
+  }
+
+  // Update the path/focus state in response to a node selection, then redraw.
+  function navigateTo(title) {
+    if (!nodeMap.has(title)) addNode(title);
+    const prev = focusTitle();
+    if (title === prev) {
+      focusOpen = !focusOpen;            // re-click focus → collapse/expand its children
+    } else if (path.includes(title)) {
+      path = path.slice(0, path.indexOf(title) + 1);  // ancestor → truncate path to it
+      focusOpen = true;
+    } else {
+      if (prev) addLink(prev, title);    // keep the path connected even for reader-link jumps
+      path.push(title);
+      focusOpen = true;
+    }
+    refresh();
   }
 
   function markExpanded(title) {
@@ -114,11 +158,15 @@ const Graph = (() => {
 
   // Re-bind selections to current data and restart the simulation.
   function refresh() {
-    const nodes = [...nodeMap.values()];
+    const nodes = [...nodeMap.values()].filter(n => isVisibleNode(n.title));
+    const visLinks = links.filter(l => {
+      const s = l.source.id || l.source, t = l.target.id || l.target;
+      return isVisibleNode(s) && isVisibleNode(t);
+    });
     document.getElementById('graphEmpty').style.display = nodes.length ? 'none' : 'block';
 
     const linkSel = linkLayer.selectAll('line.link')
-      .data(links, d => [d.source.id || d.source, d.target.id || d.target].sort().join('|'));
+      .data(visLinks, d => [d.source.id || d.source, d.target.id || d.target].sort().join('|'));
     linkSel.exit().remove();
     linkSel.enter().append('line').attr('class', 'link');
 
@@ -135,7 +183,7 @@ const Graph = (() => {
     enter.append('text').attr('dy', 26).attr('text-anchor', 'middle');
 
     const merged = enter.merge(nodeSel);
-    merged.attr('class', d => 'node' + (d.expanded ? ' expanded' : ' collapsed') + (d.selected ? ' selected' : ''));
+    merged.attr('class', d => nodeClass(d));
     merged.select('circle')
       .attr('r', d => d.isStart ? 16 : 12)
       .attr('fill', d => Categories.fillFor(d.primaryCategory))
@@ -145,15 +193,20 @@ const Graph = (() => {
       .text(d => d.title.length > 18 ? d.title.slice(0, 16) + '…' : d.title);
 
     simulation.nodes(nodes);
-    simulation.force('link').links(links);
+    simulation.force('link').links(visLinks);
     simulation.alpha(0.6).restart();
-    updateInfo();
+    updateInfo(nodes.length, visLinks.length);
+  }
+
+  function nodeClass(d) {
+    return 'node' + (d.expanded ? ' expanded' : ' collapsed')
+      + (d.selected ? ' selected' : '')
+      + (path.includes(d.title) ? ' on-path' : '');
   }
 
   function setSelected(title) {
     nodeMap.forEach(n => { n.selected = (n.title === title); });
-    nodeLayer.selectAll('g.node').attr('class', d =>
-      'node' + (d.expanded ? ' expanded' : ' collapsed') + (d.selected ? ' selected' : ''));
+    nodeLayer.selectAll('g.node').attr('class', d => nodeClass(d));
   }
 
   function tick() {
@@ -163,8 +216,7 @@ const Graph = (() => {
     nodeLayer.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`);
   }
 
-  function updateInfo() {
-    const n = nodeMap.size, l = links.length;
+  function updateInfo(n = nodeMap.size, l = links.length) {
     document.getElementById('nodeCount').textContent = n;
     document.getElementById('linkCount').textContent = l;
     document.getElementById('graphInfo').textContent = n
@@ -174,6 +226,6 @@ const Graph = (() => {
 
   return {
     init, clear, addNode, addLink, markExpanded, hasNode, isExpanded,
-    refresh, setSelected,
+    refresh, setSelected, navigateTo,
   };
 })();
