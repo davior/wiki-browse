@@ -1,0 +1,15 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local deploy config
+config.js
+
+# Dependency caches
+node_modules/

@@ -25,6 +25,9 @@ some browser quirks with `DOMParser`/fetch.)
 3. Leave auth blank for public wikis. Click **SAVE**, then **USE**.
 4. Type a start node (or leave blank for the wiki's Main Page) and hit **EXPLORE**.
 
+If you’re deploying a single locked wiki, copy `config.example.js` to `config.js`
+and edit that local file instead — Git ignores `config.js` on purpose.
+
 ## Navigating the graph
 
 The graph shows a **focus path**, not an ever-growing web. At any time you see the
@@ -44,7 +47,8 @@ Path nodes are highlighted so the trail stays readable.
 ## Deploying to a single, locked wiki
 
 To ship the app pre-pointed at one wiki (so end users can't add, edit, or switch
-connections), edit **`config.js`** — it's loaded before the app boots:
+connections), copy **`config.example.js`** to **`config.js`** and edit it — the
+file is loaded before the app boots:
 
 ```js
 window.WIKIBROWSE_CONFIG = {
@@ -58,10 +62,10 @@ window.WIKIBROWSE_CONFIG = {
 };
 ```
 
-See `config.example.js` for an annotated template. When `lockedConnection` is set the
-app boots straight into that wiki, the ⚙ panel is read-only (no add/edit/delete/switch),
-and nothing is written to `localStorage`. Leave `lockedConnection: null` (the default)
-for the normal user-managed multi-connection experience.
+When `lockedConnection` is set the app boots straight into that wiki, the ⚙ panel is
+read-only (no add/edit/delete/switch), and nothing is written to `localStorage`. Leave
+`lockedConnection: null` (the default) for the normal user-managed multi-connection
+experience.
 
 ## How it works
 
@@ -109,7 +113,8 @@ Read access to public wikis needs no credentials. For a **private** wiki:
 
 ```
 index.html        markup + theme link
-config.js         deploy-time config (optional locked connection)
+config.example.js deploy-time template
+config.js         local deploy-time config (optional locked connection)
 css/styles.css    theme (CSS variables, layout)
 js/api.js         MediaWiki Action API wrapper (CORS/auth/proxy in one place)
 js/categories.js  category → colour hashing + legend
