@@ -30,19 +30,15 @@ and edit that local file instead — Git ignores `config.js` on purpose.
 
 ## Navigating the graph
 
-The graph shows a **focus path**, not an ever-growing web. At any time you see the
-breadcrumb trail from the start node to the currently focused node, plus the focused
-node's own links:
+The graph stays focused instead of growing into an ever-larger web. Every node is
+either **open** or **closed**, and clicking a node toggles it:
 
-- **Click a child** → it becomes the new focus and fans out all of *its* links; the
-  previous node collapses, keeping only the links to its parent and to the node you
-  just opened.
-- **Click a node already on the path** → the path truncates back to it and its children
-  re-open (the deeper branch collapses).
-- **Click the focused node again** → its children collapse, leaving just the breadcrumb;
-  click once more to re-open them.
+- An **open** node shows **all** its links.
+- A **closed** node shows only the links that are themselves **open**.
 
-Path nodes are highlighted so the trail stays readable.
+So clicking a node opens it and fans out its neighbours; clicking it again closes it,
+collapsing everything underneath except branches you've explicitly opened. Open nodes
+are highlighted so the active trails stay readable. The start node opens automatically.
 
 ## Deploying to a single, locked wiki
 

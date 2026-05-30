@@ -11,15 +11,16 @@ const Graph = (() => {
   let width = 800, height = 600;
   let onNodeClick = () => {};
 
-  const nodeMap = new Map();   // title -> node {id,title,primaryCategory,expanded,...}
+  const nodeMap = new Map();   // title -> node {id,title,primaryCategory,expanded,open,...}
   const linkSet = new Set();   // "a|b" dedupe key
   let links = [];
   const adj = new Map();       // title -> Set of neighbour titles (d3-independent)
 
-  // Focus-path navigation: only the breadcrumb path (root → … → focus) plus the
-  // focused node's own links are shown. `focusOpen` toggles the focused node's children.
-  let path = [];               // ordered titles, root → … → focus
-  let focusOpen = true;
+  // Open/closed navigation: every node has an `open` flag. Visibility radiates
+  // out from the start node — an OPEN node shows all its neighbours, a CLOSED
+  // node shows only the neighbours that are themselves open. `visibleSet` caches
+  // the most recent computation for hit-testing in refresh().
+  let visibleSet = new Set();
 
   function init(clickHandler) {
     onNodeClick = clickHandler || onNodeClick;
@@ -71,8 +72,7 @@ const Graph = (() => {
     linkSet.clear();
     links = [];
     adj.clear();
-    path = [];
-    focusOpen = true;
+    visibleSet = new Set();
     Categories.reset();
     if (nodeLayer) nodeLayer.selectAll('*').remove();
     if (linkLayer) linkLayer.selectAll('*').remove();
@@ -96,6 +96,7 @@ const Graph = (() => {
       id: title, title,
       primaryCategory, categories,
       expanded: false, isStart,
+      open: isStart,            // start node opens by default; others start closed
       x: width / 2 + (Math.random() - 0.5) * 120,
       y: height / 2 + (Math.random() - 0.5) * 120,
     };
@@ -117,34 +118,50 @@ const Graph = (() => {
     adj.get(targetTitle).add(sourceTitle);
   }
 
-  /* ── focus-path navigation ── */
-  function focusTitle() { return path.length ? path[path.length - 1] : null; }
+  /* ── open/closed navigation ── */
 
-  // A node is visible when it is on the breadcrumb path, or it is a child of the
-  // focused node while that node is open. Before any selection (path empty) we
-  // show everything — covers the transient expand-before-select on a fresh start.
-  function isVisibleNode(title) {
-    if (!path.length) return true;
-    if (path.includes(title)) return true;
-    const f = focusTitle();
-    if (focusOpen && f && adj.has(f) && adj.get(f).has(title)) return true;
-    return false;
+  // Recompute which nodes are visible, radiating out from the start node.
+  // An edge Y—X reveals X (given Y is already visible) when Y is open (open node
+  // shows all neighbours) or X is open (a closed node still shows its open
+  // neighbours). With no start node yet, everything is shown — covers the
+  // transient expand-before-select during a fresh exploration.
+  function computeVisible() {
+    const vis = new Set();
+    const start = [...nodeMap.values()].find(n => n.isStart);
+    if (!start) { nodeMap.forEach(n => vis.add(n.title)); return vis; }
+    vis.add(start.title);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const y of [...vis]) {
+        const yOpen = nodeMap.get(y).open;
+        const ns = adj.get(y);
+        if (!ns) continue;
+        for (const x of ns) {
+          if (vis.has(x)) continue;
+          if (yOpen || (nodeMap.get(x) || {}).open) { vis.add(x); changed = true; }
+        }
+      }
+    }
+    return vis;
   }
 
-  // Update the path/focus state in response to a node selection, then redraw.
-  function navigateTo(title) {
+  function isVisibleNode(title) { return visibleSet.has(title); }
+
+  // Toggle a node between open and closed, then redraw.
+  function toggle(title) {
+    const n = nodeMap.get(title);
+    if (!n) return;
+    n.open = !n.open;
+    refresh();
+  }
+
+  // Ensure a node exists, is linked to `parent`, and is open/visible. Used for
+  // programmatic navigation (e.g. following an internal link in the reader).
+  function reveal(title, parent) {
     if (!nodeMap.has(title)) addNode(title);
-    const prev = focusTitle();
-    if (title === prev) {
-      focusOpen = !focusOpen;            // re-click focus → collapse/expand its children
-    } else if (path.includes(title)) {
-      path = path.slice(0, path.indexOf(title) + 1);  // ancestor → truncate path to it
-      focusOpen = true;
-    } else {
-      if (prev) addLink(prev, title);    // keep the path connected even for reader-link jumps
-      path.push(title);
-      focusOpen = true;
-    }
+    if (parent && nodeMap.has(parent)) addLink(parent, title);
+    nodeMap.get(title).open = true;
     refresh();
   }
 
@@ -158,6 +175,7 @@ const Graph = (() => {
 
   // Re-bind selections to current data and restart the simulation.
   function refresh() {
+    visibleSet = computeVisible();
     const nodes = [...nodeMap.values()].filter(n => isVisibleNode(n.title));
     const visLinks = links.filter(l => {
       const s = l.source.id || l.source, t = l.target.id || l.target;
@@ -201,7 +219,7 @@ const Graph = (() => {
   function nodeClass(d) {
     return 'node' + (d.expanded ? ' expanded' : ' collapsed')
       + (d.selected ? ' selected' : '')
-      + (path.includes(d.title) ? ' on-path' : '');
+      + (d.open ? ' open' : '');
   }
 
   function setSelected(title) {
@@ -226,6 +244,6 @@ const Graph = (() => {
 
   return {
     init, clear, addNode, addLink, markExpanded, hasNode, isExpanded,
-    refresh, setSelected, navigateTo,
+    refresh, setSelected, toggle, reveal,
   };
 })();

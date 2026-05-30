@@ -91,7 +91,7 @@ const App = (() => {
       Graph.refresh();
       setLoadingText('EXPANDING…', title);
       await expandNode(title);
-      selectNode(title, { skipExpandCheck: true });
+      selectNode(title, { skipExpandCheck: true, nav: 'reveal' });
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -117,11 +117,16 @@ const App = (() => {
     }
   }
 
-  /* ── node selection → reader ── */
-  async function selectNode(title, { skipExpandCheck = false } = {}) {
+  /* ── node selection → reader ──
+   * nav: 'toggle'  flip the node open/closed (graph clicks)
+   *      'reveal'  force the node open and link it to `parent` (reader links, start)
+   *      'none'    leave open/closed state untouched
+   */
+  async function selectNode(title, { skipExpandCheck = false, nav = 'toggle', parent = null } = {}) {
     currentTitle = title;
+    if (nav === 'toggle') Graph.toggle(title);
+    else if (nav === 'reveal') Graph.reveal(title, parent);
     Graph.setSelected(title);
-    Graph.navigateTo(title);
     openReader();
     document.getElementById('readerTitle').textContent = title;
     document.getElementById('wikiContent').innerHTML =
@@ -185,7 +190,7 @@ const App = (() => {
     container.querySelectorAll('a.wb-internal').forEach(a => {
       a.addEventListener('click', e => {
         e.preventDefault();
-        selectNode(a.dataset.title);
+        selectNode(a.dataset.title, { nav: 'reveal', parent: currentTitle });
       });
     });
   }

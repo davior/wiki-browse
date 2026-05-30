@@ -92,8 +92,8 @@ header { background: var(--bg2); border-bottom: 1px solid var(--border); padding
 .node.selected circle { stroke-width: 4; }
 .node.expanded circle { stroke-dasharray: none; }
 .node.collapsed circle { stroke-dasharray: 3 2; }
-.node.on-path circle { stroke-width: 3; filter: brightness(1.25); }
-.node.on-path text { fill: var(--accent); }
+.node.open circle { stroke-width: 3; filter: brightness(1.25); }
+.node.open text { fill: var(--accent); }
 .node text { font-family: 'IBM Plex Mono', monospace; fill: var(--text); pointer-events: none; font-size: 9px; }
 .link { stroke: var(--border2); stroke-width: 1.5; fill: none; }
 .link.highlight { stroke: var(--accent); stroke-width: 2; }
