@@ -118,13 +118,16 @@ const App = (() => {
   }
 
   /* ── node selection → reader ──
-   * nav: 'toggle'  flip the node open/closed (graph clicks)
+   * nav: 'cycle'   advance the node open → closed → unselected (graph clicks)
    *      'reveal'  force the node open and link it to `parent` (reader links, start)
-   *      'none'    leave open/closed state untouched
+   *      'none'    leave the node's state untouched
+   * On a new selection the previously selected node, if open, demotes to closed.
    */
-  async function selectNode(title, { skipExpandCheck = false, nav = 'toggle', parent = null } = {}) {
+  async function selectNode(title, { skipExpandCheck = false, nav = 'cycle', parent = null } = {}) {
+    const prev = currentTitle;
     currentTitle = title;
-    if (nav === 'toggle') Graph.toggle(title);
+    if (nav !== 'none' && prev && prev !== title) Graph.demoteOpen(prev);
+    if (nav === 'cycle') Graph.cycle(title);
     else if (nav === 'reveal') Graph.reveal(title, parent);
     Graph.setSelected(title);
     openReader();

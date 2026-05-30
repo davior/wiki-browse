@@ -87,15 +87,23 @@ header { background: var(--bg2); border-bottom: 1px solid var(--border); padding
 .graph-empty .big-text { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text3); letter-spacing: 3px; text-transform: uppercase; line-height: 2; }
 .graph-empty .hint { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text3); margin-top: 12px; opacity: 0.5; }
 .graph-info { position: absolute; bottom: 14px; left: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text3); letter-spacing: 1px; pointer-events: none; }
-.node circle { stroke-width: 2; cursor: pointer; transition: stroke-width 0.15s; }
+.node circle { stroke-width: 2; cursor: pointer; transition: stroke-width 0.15s, opacity 0.15s; }
 .node circle:hover { stroke-width: 4; }
 .node.selected circle { stroke-width: 4; }
 .node.expanded circle { stroke-dasharray: none; }
 .node.collapsed circle { stroke-dasharray: 3 2; }
-.node.open circle { stroke-width: 3; filter: brightness(1.25); }
-.node.open text { fill: var(--accent); }
+/* Tri-state opacity: open is fully opaque, closed dimmer, unselected dimmest. */
+.node.state-open { opacity: 1; }
+.node.state-open circle { stroke-width: 3; filter: brightness(1.2); }
+.node.state-open text { fill: var(--accent); }
+.node.state-closed { opacity: 0.6; }
+.node.state-unselected { opacity: 0.32; }
 .node text { font-family: 'IBM Plex Mono', monospace; fill: var(--text); pointer-events: none; font-size: 9px; }
 .link { stroke: var(--border2); stroke-width: 1.5; fill: none; }
+/* Edge opacity/style follows its weakest endpoint. */
+.link.lvl-open { opacity: 0.9; }
+.link.lvl-closed { opacity: 0.5; }
+.link.lvl-unselected { opacity: 0.28; stroke-dasharray: 3 3; }
 .link.highlight { stroke: var(--accent); stroke-width: 2; }
 
 /* ─── RIGHT PANEL / READER ─── */

@@ -30,15 +30,19 @@ and edit that local file instead — Git ignores `config.js` on purpose.
 
 ## Navigating the graph
 
-The graph stays focused instead of growing into an ever-larger web. Every node is
-either **open** or **closed**, and clicking a node toggles it:
+The graph stays focused instead of growing into an ever-larger web. Every node has
+one of three states, and clicking it cycles through them: **open → closed →
+unselected → open**.
 
-- An **open** node shows **all** its links.
-- A **closed** node shows only the links that are themselves **open**.
+- **Open** — shows **all** its links; rendered fully opaque.
+- **Closed** — shows only the **open or closed** nodes linked to it; rendered dimmer.
+- **Unselected** (the default for newly discovered nodes) — shows the open/closed
+  nodes linked to it with dotted, faint edges; rendered dimmest.
 
-So clicking a node opens it and fans out its neighbours; clicking it again closes it,
-collapsing everything underneath except branches you've explicitly opened. Open nodes
-are highlighted so the active trails stay readable. The start node opens automatically.
+So opening a node fans out its neighbours (which arrive faint/unselected); click one to
+open it in turn, and so on. Selecting a different node automatically demotes the
+previously selected node from **open** to **closed**, keeping the view tidy. The start
+node opens automatically.
 
 ## Deploying to a single, locked wiki
 

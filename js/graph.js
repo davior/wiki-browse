@@ -96,7 +96,9 @@ const Graph = (() => {
       id: title, title,
       primaryCategory, categories,
       expanded: false, isStart,
-      open: isStart,            // start node opens by default; others start closed
+      // Tri-state cycled on click: 'open' → 'closed' → 'unselected' → 'open'.
+      // Start node opens by default; newly discovered nodes start unselected.
+      state: isStart ? 'open' : 'unselected',
       x: width / 2 + (Math.random() - 0.5) * 120,
       y: height / 2 + (Math.random() - 0.5) * 120,
     };
@@ -118,13 +120,17 @@ const Graph = (() => {
     adj.get(targetTitle).add(sourceTitle);
   }
 
-  /* ── open/closed navigation ── */
+  /* ── open / closed / unselected navigation ── */
+
+  const STATES = ['open', 'closed', 'unselected'];
+  function rank(state) { return state === 'open' ? 2 : state === 'closed' ? 1 : 0; }
 
   // Recompute which nodes are visible, radiating out from the start node.
-  // An edge Y—X reveals X (given Y is already visible) when Y is open (open node
-  // shows all neighbours) or X is open (a closed node still shows its open
-  // neighbours). With no start node yet, everything is shown — covers the
-  // transient expand-before-select during a fresh exploration.
+  // An edge Y—X reveals X (given Y is already visible) when Y is open (an open
+  // node shows ALL its neighbours) or X is open/closed (a closed or unselected
+  // node still shows the open/closed nodes linked to it — but not unselected
+  // ones). With no start node yet, everything is shown — covers the transient
+  // expand-before-select during a fresh exploration.
   function computeVisible() {
     const vis = new Set();
     const start = [...nodeMap.values()].find(n => n.isStart);
@@ -134,12 +140,13 @@ const Graph = (() => {
     while (changed) {
       changed = false;
       for (const y of [...vis]) {
-        const yOpen = nodeMap.get(y).open;
+        const yOpen = nodeMap.get(y).state === 'open';
         const ns = adj.get(y);
         if (!ns) continue;
         for (const x of ns) {
           if (vis.has(x)) continue;
-          if (yOpen || (nodeMap.get(x) || {}).open) { vis.add(x); changed = true; }
+          const xs = (nodeMap.get(x) || {}).state;
+          if (yOpen || xs === 'open' || xs === 'closed') { vis.add(x); changed = true; }
         }
       }
     }
@@ -148,12 +155,19 @@ const Graph = (() => {
 
   function isVisibleNode(title) { return visibleSet.has(title); }
 
-  // Toggle a node between open and closed, then redraw.
-  function toggle(title) {
+  // Advance a node through open → closed → unselected → open, then redraw.
+  function cycle(title) {
     const n = nodeMap.get(title);
     if (!n) return;
-    n.open = !n.open;
+    n.state = STATES[(STATES.indexOf(n.state) + 1) % STATES.length];
     refresh();
+  }
+
+  // Demote an open node to closed without redrawing (caller refreshes). Used for
+  // the previously selected node when a new node is selected; non-open is left as-is.
+  function demoteOpen(title) {
+    const n = nodeMap.get(title);
+    if (n && n.state === 'open') n.state = 'closed';
   }
 
   // Ensure a node exists, is linked to `parent`, and is open/visible. Used for
@@ -161,7 +175,7 @@ const Graph = (() => {
   function reveal(title, parent) {
     if (!nodeMap.has(title)) addNode(title);
     if (parent && nodeMap.has(parent)) addLink(parent, title);
-    nodeMap.get(title).open = true;
+    nodeMap.get(title).state = 'open';
     refresh();
   }
 
@@ -187,6 +201,8 @@ const Graph = (() => {
       .data(visLinks, d => [d.source.id || d.source, d.target.id || d.target].sort().join('|'));
     linkSel.exit().remove();
     linkSel.enter().append('line').attr('class', 'link');
+    // Edge styling follows its weakest endpoint (open > closed > unselected).
+    linkLayer.selectAll('line.link').attr('class', d => 'link ' + linkLevel(d));
 
     const nodeSel = nodeLayer.selectAll('g.node').data(nodes, d => d.id);
     nodeSel.exit().remove();
@@ -217,9 +233,17 @@ const Graph = (() => {
   }
 
   function nodeClass(d) {
-    return 'node' + (d.expanded ? ' expanded' : ' collapsed')
-      + (d.selected ? ' selected' : '')
-      + (d.open ? ' open' : '');
+    return 'node state-' + d.state
+      + (d.expanded ? ' expanded' : ' collapsed')
+      + (d.selected ? ' selected' : '');
+  }
+
+  // Class for a link based on the weakest (least open) of its two endpoints.
+  function linkLevel(d) {
+    const s = nodeMap.get(d.source.id || d.source) || {};
+    const t = nodeMap.get(d.target.id || d.target) || {};
+    const m = Math.min(rank(s.state), rank(t.state));
+    return m === 2 ? 'lvl-open' : m === 1 ? 'lvl-closed' : 'lvl-unselected';
   }
 
   function setSelected(title) {
@@ -244,6 +268,6 @@ const Graph = (() => {
 
   return {
     init, clear, addNode, addLink, markExpanded, hasNode, isExpanded,
-    refresh, setSelected, toggle, reveal,
+    refresh, setSelected, cycle, demoteOpen, reveal,
   };
 })();
