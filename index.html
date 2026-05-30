@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WIKIBROWSE — MediaWiki Graph Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">WIKI<span>BROWSE</span></div>
+  <div class="status-dot" id="statusDot"></div>
+  <div class="status-text" id="statusText">NO CONNECTION</div>
+  <div class="status-text" id="connName" style="color:var(--text2);margin-left:2px"></div>
+  <div class="header-spacer"></div>
+  <div class="header-stat" style="margin-right:12px">NODES: <span id="nodeCount">0</span></div>
+  <div class="header-stat" style="margin-right:12px">LINKS: <span id="linkCount">0</span></div>
+  <button class="icon-btn" onclick="App.openConnectionsModal()" title="Connections">⚙</button>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+    <div class="panel-header">// EXPLORER CONTROL</div>
+
+    <div class="prompt-area">
+      <div class="prompt-label">// ACTIVE WIKI</div>
+      <div class="active-conn-box" id="activeConnBox">
+        <div class="active-conn-name" id="activeConnName">No wiki connected</div>
+        <div class="active-conn-url" id="activeConnUrl">Open ⚙ to add a connection</div>
+      </div>
+
+      <div class="prompt-label" style="margin-top:12px">// START NODE</div>
+      <div class="start-row">
+        <input class="search-input" id="startInput" placeholder="Page title (blank = Main Page)" autocomplete="off">
+      </div>
+      <div class="autocomplete" id="startAutocomplete"></div>
+      <button class="btn btn-primary" id="exploreBtn" onclick="App.startExploration()">⚡ EXPLORE</button>
+      <button class="btn btn-ghost btn-full" id="resetBtn" onclick="App.resetGraph()">✕ RESET GRAPH</button>
+    </div>
+
+    <!-- Category legend -->
+    <div class="legend-section">
+      <div class="section-label">// CATEGORIES</div>
+      <div class="legend-list" id="legendList">
+        <div class="legend-empty">No categories yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTRE PANEL / GRAPH -->
+  <div class="centre-panel">
+    <div class="graph-panel" id="graphPanel">
+      <svg id="graph"></svg>
+      <div class="graph-empty" id="graphEmpty">
+        <div class="big-text">
+          MEDIAWIKI KNOWLEDGE GRAPH<br>
+          ─────────────────────────<br>
+          NO NODES YET
+        </div>
+        <div class="hint">Connect a wiki → enter a start node → EXPLORE</div>
+      </div>
+      <div class="graph-info" id="graphInfo"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL / READER -->
+  <div class="right-panel hidden" id="rightPanel">
+    <div class="reader-header">
+      <div class="reader-title" id="readerTitle">—</div>
+      <a class="open-wiki-btn" id="openWikiBtn" href="#" target="_blank" rel="noopener" title="Open on wiki">↗</a>
+      <button class="reader-close" onclick="App.closeReader()" title="Close">✕</button>
+    </div>
+    <div class="reader-actions">
+      <button class="btn btn-sm btn-success" id="expandHereBtn" onclick="App.expandCurrent()">↳ EXPAND NEIGHBOURS</button>
+      <span class="reader-cats" id="readerCats"></span>
+    </div>
+    <div class="reader-body">
+      <div class="wiki-content" id="wikiContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loadingText">LOADING...</div>
+    <div class="loading-sub" id="loadingSub"></div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- CONNECTIONS MODAL -->
+<div class="modal-overlay" id="connectionsModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">// WIKI CONNECTIONS</div>
+      <button class="modal-close" onclick="App.closeConnectionsModal()">✕</button>
+    </div>
+    <div class="modal-body" id="connectionsModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary btn-sm" onclick="App.showAddConnectionForm()">+ ADD CONNECTION</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT CONNECTION MODAL -->
+<div class="modal-overlay" id="connFormModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="connFormTitle">// ADD CONNECTION</div>
+      <button class="modal-close" onclick="App.closeConnFormModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="connFormId">
+      <div class="form-group">
+        <label class="form-label">Connection Name</label>
+        <input class="form-input" id="connFormName" placeholder="Wikipedia (EN)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Wiki API URL</label>
+        <input class="form-input" id="connFormUrl" placeholder="https://en.wikipedia.org/w/api.php">
+        <div class="form-hint">Must point to api.php</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bot Username <span class="optional">(optional — private wikis only)</span></label>
+        <input class="form-input" id="connFormUsername" placeholder="User@BotName" autocomplete="off">
+        <div class="form-hint">Create at Special:BotPasswords with read-only grants</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bot Password <span class="optional">(optional)</span></label>
+        <input class="form-input" type="password" id="connFormPassword" placeholder="Leave blank to keep existing" autocomplete="new-password">
+        <div class="form-hint warn">⚠ Stored in this browser's localStorage. Use a read-only grant.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Proxy URL <span class="optional">(optional — for CORS-blocked wikis)</span></label>
+        <input class="form-input" id="connFormProxy" placeholder="https://my-proxy.example/?url=" autocomplete="off">
+        <div class="form-hint">Prepended to API requests. Only needed if the wiki blocks cross-origin calls.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="App.closeConnFormModal()">CANCEL</button>
+      <button class="btn btn-primary btn-sm" onclick="App.saveConnection()">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/categories.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
