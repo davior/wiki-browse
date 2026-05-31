@@ -58,6 +58,7 @@ window.WIKIBROWSE_CONFIG = {
     proxyUrl: '',     // optional
     botUsername: '',  // optional (private wikis)
     botPassword: '',  // optional
+    startNode: '',    // optional — auto-explore this page on load ('' = Main Page)
   },
 };
 ```
@@ -66,6 +67,10 @@ When `lockedConnection` is set the app boots straight into that wiki, the ⚙ pa
 read-only (no add/edit/delete/switch), and nothing is written to `localStorage`. Leave
 `lockedConnection: null` (the default) for the normal user-managed multi-connection
 experience.
+
+Add an optional **`startNode`** to auto-explore a page as soon as the app loads —
+set it to a page title, or `''` to open the wiki's Main Page. Omit the key to start
+with an empty graph.
 
 ## How it works
 

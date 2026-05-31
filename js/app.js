@@ -4,6 +4,7 @@ const App = (() => {
   let connections = [];
   let activeConnectionId = null;
   let locked = false;             // deployed config pins a single, read-only connection
+  let defaultStartNode = null;    // locked-config start node to auto-explore on load (null = none)
   let currentTitle = null;        // page open in the reader
   let acItems = [];               // autocomplete state
   let acIndex = -1;
@@ -14,9 +15,12 @@ const App = (() => {
     const cfg = window.WIKIBROWSE_CONFIG || {};
     if (cfg.lockedConnection) {
       // Deployed configuration pins a single connection; ignore localStorage.
+      // `startNode` (if present) is an app-level hint, not a connection field.
+      const { startNode, ...connFields } = cfg.lockedConnection;
       locked = true;
-      connections = [{ id: 'locked', ...cfg.lockedConnection }];
+      connections = [{ id: 'locked', ...connFields }];
       activeConnectionId = 'locked';
+      defaultStartNode = startNode == null ? null : String(startNode);
       return;
     }
     try {
@@ -46,6 +50,11 @@ const App = (() => {
         closeConnectionsModal(); closeConnFormModal(); hideAutocomplete();
       }
     });
+    // Auto-explore the deployed default node (blank string = the wiki's Main Page).
+    if (defaultStartNode != null) {
+      document.getElementById('startInput').value = defaultStartNode;
+      startExploration();
+    }
   }
 
   function renderActiveConn() {

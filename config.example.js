@@ -16,5 +16,7 @@ window.WIKIBROWSE_CONFIG = {
     proxyUrl: '',     // optional — set only if the wiki blocks cross-origin calls
     botUsername: '',  // optional — for private wikis (Special:BotPasswords, read-only grant)
     botPassword: '',  // optional — paired with botUsername
+    startNode: '',    // optional — auto-explore this page on load ('' = the wiki's Main Page).
+                      // Omit the key entirely to start with an empty graph.
   },
 };
