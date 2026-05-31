@@ -72,6 +72,23 @@ Add an optional **`startNode`** to auto-explore a page as soon as the app loads 
 set it to a page title, or `''` to open the wiki's Main Page. Omit the key to start
 with an empty graph.
 
+### Deployment script
+
+`deploy.sh` gathers the files a server needs into `dist/` (and seeds `config.js`
+from the template if you haven't created it yet, since it's git-ignored):
+
+```bash
+./deploy.sh                                 # build ./dist
+./deploy.sh user@host:/var/www/wikibrowse   # build, then rsync to a target
+OUT=public ./deploy.sh                      # build into ./public instead
+```
+
+With no argument it just builds `dist/`, which you can serve from any static host
+(`cd dist && python3 -m http.server 8000`), copy to a web root, or publish to a
+CDN. Pass an `rsync`-style destination as the first argument to push the build
+straight to a server. Edit `config.js` to point at your wiki before deploying for
+real.
+
 ## How it works
 
 All API access funnels through `Api` (`js/api.js`) using the MediaWiki Action API:
@@ -118,6 +135,7 @@ Read access to public wikis needs no credentials. For a **private** wiki:
 
 ```
 index.html        markup + theme link
+deploy.sh         build ./dist and optionally rsync to a host
 config.example.js deploy-time template
 config.js         local deploy-time config (optional locked connection)
 css/styles.css    theme (CSS variables, layout)
