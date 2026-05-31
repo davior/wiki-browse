@@ -25,6 +25,53 @@ some browser quirks with `DOMParser`/fetch.)
 3. Leave auth blank for public wikis. Click **SAVE**, then **USE**.
 4. Type a start node (or leave blank for the wiki's Main Page) and hit **EXPLORE**.
 
+If you’re deploying a single locked wiki, copy `config.example.js` to `config.js`
+and edit that local file instead — Git ignores `config.js` on purpose.
+
+## Navigating the graph
+
+The graph stays focused instead of growing into an ever-larger web. Every node has
+one of three states, and clicking it cycles through them: **open → closed →
+unselected → open**.
+
+- **Open** — shows **all** its links; rendered fully opaque.
+- **Closed** — shows only the **open or closed** nodes linked to it; rendered dimmer.
+- **Unselected** (the default for newly discovered nodes) — shows the open/closed
+  nodes linked to it with dotted, faint edges; rendered dimmest.
+
+So opening a node fans out its neighbours (which arrive faint/unselected); click one to
+open it in turn, and so on. Selecting a different node automatically demotes the
+previously selected node from **open** to **closed**, keeping the view tidy. The start
+node opens automatically.
+
+## Deploying to a single, locked wiki
+
+To ship the app pre-pointed at one wiki (so end users can't add, edit, or switch
+connections), copy **`config.example.js`** to **`config.js`** and edit it — the
+file is loaded before the app boots:
+
+```js
+window.WIKIBROWSE_CONFIG = {
+  lockedConnection: {
+    name: 'My Wiki',
+    apiUrl: 'https://wiki.example.com/w/api.php',
+    proxyUrl: '',     // optional
+    botUsername: '',  // optional (private wikis)
+    botPassword: '',  // optional
+    startNode: '',    // optional — auto-explore this page on load ('' = Main Page)
+  },
+};
+```
+
+When `lockedConnection` is set the app boots straight into that wiki, the ⚙ panel is
+read-only (no add/edit/delete/switch), and nothing is written to `localStorage`. Leave
+`lockedConnection: null` (the default) for the normal user-managed multi-connection
+experience.
+
+Add an optional **`startNode`** to auto-explore a page as soon as the app loads —
+set it to a page title, or `''` to open the wiki's Main Page. Omit the key to start
+with an empty graph.
+
 ## How it works
 
 All API access funnels through `Api` (`js/api.js`) using the MediaWiki Action API:
@@ -71,6 +118,8 @@ Read access to public wikis needs no credentials. For a **private** wiki:
 
 ```
 index.html        markup + theme link
+config.example.js deploy-time template
+config.js         local deploy-time config (optional locked connection)
 css/styles.css    theme (CSS variables, layout)
 js/api.js         MediaWiki Action API wrapper (CORS/auth/proxy in one place)
 js/categories.js  category → colour hashing + legend

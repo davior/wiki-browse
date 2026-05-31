@@ -3,6 +3,8 @@ const App = (() => {
   const LS_KEY = 'wikibrowse.connections.v1';
   let connections = [];
   let activeConnectionId = null;
+  let locked = false;             // deployed config pins a single, read-only connection
+  let defaultStartNode = null;    // locked-config start node to auto-explore on load (null = none)
   let currentTitle = null;        // page open in the reader
   let acItems = [];               // autocomplete state
   let acIndex = -1;
@@ -10,6 +12,17 @@ const App = (() => {
 
   /* ── persistence ── */
   function load() {
+    const cfg = window.WIKIBROWSE_CONFIG || {};
+    if (cfg.lockedConnection) {
+      // Deployed configuration pins a single connection; ignore localStorage.
+      // `startNode` (if present) is an app-level hint, not a connection field.
+      const { startNode, ...connFields } = cfg.lockedConnection;
+      locked = true;
+      connections = [{ id: 'locked', ...connFields }];
+      activeConnectionId = 'locked';
+      defaultStartNode = startNode == null ? null : String(startNode);
+      return;
+    }
     try {
       const raw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
       connections = raw.connections || [];
@@ -17,6 +30,7 @@ const App = (() => {
     } catch { connections = []; activeConnectionId = null; }
   }
   function save() {
+    if (locked) return;           // never persist a deployed, locked connection
     localStorage.setItem(LS_KEY, JSON.stringify({ connections, activeConnectionId }));
   }
   function activeConn() { return connections.find(c => c.id === activeConnectionId) || null; }
@@ -36,6 +50,11 @@ const App = (() => {
         closeConnectionsModal(); closeConnFormModal(); hideAutocomplete();
       }
     });
+    // Auto-explore the deployed default node (blank string = the wiki's Main Page).
+    if (defaultStartNode != null) {
+      document.getElementById('startInput').value = defaultStartNode;
+      startExploration();
+    }
   }
 
   function renderActiveConn() {
@@ -81,7 +100,7 @@ const App = (() => {
       Graph.refresh();
       setLoadingText('EXPANDING…', title);
       await expandNode(title);
-      selectNode(title, { skipExpandCheck: true });
+      selectNode(title, { skipExpandCheck: true, nav: 'reveal' });
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -107,9 +126,18 @@ const App = (() => {
     }
   }
 
-  /* ── node selection → reader ── */
-  async function selectNode(title, { skipExpandCheck = false } = {}) {
+  /* ── node selection → reader ──
+   * nav: 'cycle'   advance the node open → closed → unselected (graph clicks)
+   *      'reveal'  force the node open and link it to `parent` (reader links, start)
+   *      'none'    leave the node's state untouched
+   * On a new selection the previously selected node, if open, demotes to closed.
+   */
+  async function selectNode(title, { skipExpandCheck = false, nav = 'cycle', parent = null } = {}) {
+    const prev = currentTitle;
     currentTitle = title;
+    if (nav !== 'none' && prev && prev !== title) Graph.demoteOpen(prev);
+    if (nav === 'cycle') Graph.cycle(title);
+    else if (nav === 'reveal') Graph.reveal(title, parent);
     Graph.setSelected(title);
     openReader();
     document.getElementById('readerTitle').textContent = title;
@@ -174,7 +202,7 @@ const App = (() => {
     container.querySelectorAll('a.wb-internal').forEach(a => {
       a.addEventListener('click', e => {
         e.preventDefault();
-        selectNode(a.dataset.title);
+        selectNode(a.dataset.title, { nav: 'reveal', parent: currentTitle });
       });
     });
   }
@@ -277,8 +305,23 @@ const App = (() => {
   function closeConnectionsModal() { document.getElementById('connectionsModal').classList.remove('active'); }
   function renderConnectionsModal() {
     const body = document.getElementById('connectionsModalBody');
+    const addBtn = document.getElementById('addConnectionBtn');
+    if (addBtn) addBtn.style.display = locked ? 'none' : '';
     if (!connections.length) {
       body.innerHTML = '<div class="conn-empty">No connections yet. Add one below.</div>';
+      return;
+    }
+    if (locked) {
+      const c = connections[0];
+      body.innerHTML = `<div class="conn-item active-conn">
+        <div class="conn-dot active-conn"></div>
+        <div style="flex:1;min-width:0">
+          <div class="conn-name">${escapeHtml(c.name)}</div>
+          <div class="conn-url">${escapeHtml(c.apiUrl)}</div>
+          <div class="conn-auth">🔒 LOCKED · DEPLOYED CONFIGURATION</div>
+        </div>
+        <span style="font-size:9px;color:var(--accent3);font-family:'IBM Plex Mono',monospace">ACTIVE</span>
+      </div>`;
       return;
     }
     body.innerHTML = connections.map(c => {
@@ -298,8 +341,9 @@ const App = (() => {
       </div>`;
     }).join('');
   }
-  function activate(id) { activeConnectionId = id; save(); renderActiveConn(); renderConnectionsModal(); }
+  function activate(id) { if (locked) return; activeConnectionId = id; save(); renderActiveConn(); renderConnectionsModal(); }
   function forget(id) {
+    if (locked) return;
     const c = connections.find(x => x.id === id); if (!c) return;
     delete c.botPassword;
     Api.forgetSession(id);
@@ -307,6 +351,7 @@ const App = (() => {
     toast('Stored credentials removed', 'info');
   }
   function remove(id) {
+    if (locked) return;
     if (!confirm('Delete this connection?')) return;
     connections = connections.filter(c => c.id !== id);
     if (activeConnectionId === id) activeConnectionId = connections[0] ? connections[0].id : null;
@@ -315,8 +360,8 @@ const App = (() => {
   }
 
   /* ── connection form ── */
-  function showAddConnectionForm() { fillForm(null); document.getElementById('connFormModal').classList.add('active'); }
-  function edit(id) { fillForm(connections.find(c => c.id === id)); document.getElementById('connFormModal').classList.add('active'); }
+  function showAddConnectionForm() { if (locked) return; fillForm(null); document.getElementById('connFormModal').classList.add('active'); }
+  function edit(id) { if (locked) return; fillForm(connections.find(c => c.id === id)); document.getElementById('connFormModal').classList.add('active'); }
   function closeConnFormModal() { document.getElementById('connFormModal').classList.remove('active'); }
   function fillForm(conn) {
     document.getElementById('connFormId').value = conn ? conn.id : '';
@@ -328,6 +373,7 @@ const App = (() => {
     document.getElementById('connFormTitle').textContent = conn ? '// EDIT CONNECTION' : '// ADD CONNECTION';
   }
   function saveConnection() {
+    if (locked) return;
     const id = document.getElementById('connFormId').value;
     const name = document.getElementById('connFormName').value.trim();
     const apiUrl = document.getElementById('connFormUrl').value.trim();

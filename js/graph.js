@@ -11,9 +11,16 @@ const Graph = (() => {
   let width = 800, height = 600;
   let onNodeClick = () => {};
 
-  const nodeMap = new Map();   // title -> node {id,title,primaryCategory,expanded,...}
+  const nodeMap = new Map();   // title -> node {id,title,primaryCategory,expanded,open,...}
   const linkSet = new Set();   // "a|b" dedupe key
   let links = [];
+  const adj = new Map();       // title -> Set of neighbour titles (d3-independent)
+
+  // Open/closed navigation: every node has an `open` flag. Visibility radiates
+  // out from the start node — an OPEN node shows all its neighbours, a CLOSED
+  // node shows only the neighbours that are themselves open. `visibleSet` caches
+  // the most recent computation for hit-testing in refresh().
+  let visibleSet = new Set();
 
   function init(clickHandler) {
     onNodeClick = clickHandler || onNodeClick;
@@ -64,6 +71,8 @@ const Graph = (() => {
     nodeMap.clear();
     linkSet.clear();
     links = [];
+    adj.clear();
+    visibleSet = new Set();
     Categories.reset();
     if (nodeLayer) nodeLayer.selectAll('*').remove();
     if (linkLayer) linkLayer.selectAll('*').remove();
@@ -87,6 +96,9 @@ const Graph = (() => {
       id: title, title,
       primaryCategory, categories,
       expanded: false, isStart,
+      // Tri-state cycled on click: 'open' → 'closed' → 'unselected' → 'open'.
+      // Start node opens by default; newly discovered nodes start unselected.
+      state: isStart ? 'open' : 'unselected',
       x: width / 2 + (Math.random() - 0.5) * 120,
       y: height / 2 + (Math.random() - 0.5) * 120,
     };
@@ -102,6 +114,69 @@ const Graph = (() => {
     if (!nodeMap.has(sourceTitle) || !nodeMap.has(targetTitle)) return;
     linkSet.add(key);
     links.push({ source: sourceTitle, target: targetTitle });
+    if (!adj.has(sourceTitle)) adj.set(sourceTitle, new Set());
+    if (!adj.has(targetTitle)) adj.set(targetTitle, new Set());
+    adj.get(sourceTitle).add(targetTitle);
+    adj.get(targetTitle).add(sourceTitle);
+  }
+
+  /* ── open / closed / unselected navigation ── */
+
+  const STATES = ['open', 'closed', 'unselected'];
+  function rank(state) { return state === 'open' ? 2 : state === 'closed' ? 1 : 0; }
+
+  // Recompute which nodes are visible, radiating out from the start node.
+  // An edge Y—X reveals X (given Y is already visible) when Y is open (an open
+  // node shows ALL its neighbours) or X is open/closed (a closed or unselected
+  // node still shows the open/closed nodes linked to it — but not unselected
+  // ones). With no start node yet, everything is shown — covers the transient
+  // expand-before-select during a fresh exploration.
+  function computeVisible() {
+    const vis = new Set();
+    const start = [...nodeMap.values()].find(n => n.isStart);
+    if (!start) { nodeMap.forEach(n => vis.add(n.title)); return vis; }
+    vis.add(start.title);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const y of [...vis]) {
+        const yOpen = nodeMap.get(y).state === 'open';
+        const ns = adj.get(y);
+        if (!ns) continue;
+        for (const x of ns) {
+          if (vis.has(x)) continue;
+          const xs = (nodeMap.get(x) || {}).state;
+          if (yOpen || xs === 'open' || xs === 'closed') { vis.add(x); changed = true; }
+        }
+      }
+    }
+    return vis;
+  }
+
+  function isVisibleNode(title) { return visibleSet.has(title); }
+
+  // Advance a node through open → closed → unselected → open, then redraw.
+  function cycle(title) {
+    const n = nodeMap.get(title);
+    if (!n) return;
+    n.state = STATES[(STATES.indexOf(n.state) + 1) % STATES.length];
+    refresh();
+  }
+
+  // Demote an open node to closed without redrawing (caller refreshes). Used for
+  // the previously selected node when a new node is selected; non-open is left as-is.
+  function demoteOpen(title) {
+    const n = nodeMap.get(title);
+    if (n && n.state === 'open') n.state = 'closed';
+  }
+
+  // Ensure a node exists, is linked to `parent`, and is open/visible. Used for
+  // programmatic navigation (e.g. following an internal link in the reader).
+  function reveal(title, parent) {
+    if (!nodeMap.has(title)) addNode(title);
+    if (parent && nodeMap.has(parent)) addLink(parent, title);
+    nodeMap.get(title).state = 'open';
+    refresh();
   }
 
   function markExpanded(title) {
@@ -114,13 +189,20 @@ const Graph = (() => {
 
   // Re-bind selections to current data and restart the simulation.
   function refresh() {
-    const nodes = [...nodeMap.values()];
+    visibleSet = computeVisible();
+    const nodes = [...nodeMap.values()].filter(n => isVisibleNode(n.title));
+    const visLinks = links.filter(l => {
+      const s = l.source.id || l.source, t = l.target.id || l.target;
+      return isVisibleNode(s) && isVisibleNode(t);
+    });
     document.getElementById('graphEmpty').style.display = nodes.length ? 'none' : 'block';
 
     const linkSel = linkLayer.selectAll('line.link')
-      .data(links, d => [d.source.id || d.source, d.target.id || d.target].sort().join('|'));
+      .data(visLinks, d => [d.source.id || d.source, d.target.id || d.target].sort().join('|'));
     linkSel.exit().remove();
     linkSel.enter().append('line').attr('class', 'link');
+    // Edge styling follows its weakest endpoint (open > closed > unselected).
+    linkLayer.selectAll('line.link').attr('class', d => 'link ' + linkLevel(d));
 
     const nodeSel = nodeLayer.selectAll('g.node').data(nodes, d => d.id);
     nodeSel.exit().remove();
@@ -135,7 +217,7 @@ const Graph = (() => {
     enter.append('text').attr('dy', 26).attr('text-anchor', 'middle');
 
     const merged = enter.merge(nodeSel);
-    merged.attr('class', d => 'node' + (d.expanded ? ' expanded' : ' collapsed') + (d.selected ? ' selected' : ''));
+    merged.attr('class', d => nodeClass(d));
     merged.select('circle')
       .attr('r', d => d.isStart ? 16 : 12)
       .attr('fill', d => Categories.fillFor(d.primaryCategory))
@@ -145,15 +227,28 @@ const Graph = (() => {
       .text(d => d.title.length > 18 ? d.title.slice(0, 16) + '…' : d.title);
 
     simulation.nodes(nodes);
-    simulation.force('link').links(links);
+    simulation.force('link').links(visLinks);
     simulation.alpha(0.6).restart();
-    updateInfo();
+    updateInfo(nodes.length, visLinks.length);
+  }
+
+  function nodeClass(d) {
+    return 'node state-' + d.state
+      + (d.expanded ? ' expanded' : ' collapsed')
+      + (d.selected ? ' selected' : '');
+  }
+
+  // Class for a link based on the weakest (least open) of its two endpoints.
+  function linkLevel(d) {
+    const s = nodeMap.get(d.source.id || d.source) || {};
+    const t = nodeMap.get(d.target.id || d.target) || {};
+    const m = Math.min(rank(s.state), rank(t.state));
+    return m === 2 ? 'lvl-open' : m === 1 ? 'lvl-closed' : 'lvl-unselected';
   }
 
   function setSelected(title) {
     nodeMap.forEach(n => { n.selected = (n.title === title); });
-    nodeLayer.selectAll('g.node').attr('class', d =>
-      'node' + (d.expanded ? ' expanded' : ' collapsed') + (d.selected ? ' selected' : ''));
+    nodeLayer.selectAll('g.node').attr('class', d => nodeClass(d));
   }
 
   function tick() {
@@ -163,8 +258,7 @@ const Graph = (() => {
     nodeLayer.selectAll('g.node').attr('transform', d => `translate(${d.x},${d.y})`);
   }
 
-  function updateInfo() {
-    const n = nodeMap.size, l = links.length;
+  function updateInfo(n = nodeMap.size, l = links.length) {
     document.getElementById('nodeCount').textContent = n;
     document.getElementById('linkCount').textContent = l;
     document.getElementById('graphInfo').textContent = n
@@ -174,6 +268,6 @@ const Graph = (() => {
 
   return {
     init, clear, addNode, addLink, markExpanded, hasNode, isExpanded,
-    refresh, setSelected,
+    refresh, setSelected, cycle, demoteOpen, reveal,
   };
 })();
