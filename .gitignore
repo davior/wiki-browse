@@ -11,5 +11,8 @@ Thumbs.db
 # Local deploy config
 config.js
 
+# Build output
+dist/
+
 # Dependency caches
 node_modules/
